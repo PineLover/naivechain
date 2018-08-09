@@ -52,6 +52,8 @@ class Merkle_Tree {
 
 //it will be decayed.
 var TransactionPool = new Array();
+//0804
+var UtxoSet = new Array();
 
 class Transaction {
     constructor(sender, receiver, value, pubKey, in_counter, out_counter, transactionHash, inputs, outputs) {   // 수정 요망
@@ -88,6 +90,40 @@ class Transaction {
     }
 }
 
+//0804
+class UTXO {
+    constructor(sender, receiver, value, index) {
+
+        this.sender = sender;
+        this.receiver = receiver;
+        this.value = value;
+        this.flag = true;     //true : 사용 전 false : 사용 후
+        this.txid = sha3.keccak256(String(sender) + String(index));
+        //this.sequence;
+    }
+}
+//0804
+//////////////////////////////
+var addUtxoSet = (newUtxo) => {
+    UtxoSet.push(newUtxo);
+};
+
+var Utxo1 = new UTXO(3002, 3001, 10, 0);
+var Utxo2 = new UTXO(3001, 3002, 25, 1);
+var Utxo3 = new UTXO(3001, 3001, 5, 2);
+var Utxo4 = new UTXO(3001, 3001, 10, 3);
+var Utxo5 = new UTXO(3001, 3002, 6, 4);
+var Utxo6 = new UTXO(3001, 3001, 12, 5);
+
+
+addUtxoSet(Utxo1);
+addUtxoSet(Utxo2);
+addUtxoSet(Utxo3);
+addUtxoSet(Utxo4);
+addUtxoSet(Utxo5);
+addUtxoSet(Utxo6);
+
+console.log(UtxoSet, UtxoSet.length);
 
 
 // 상연아!! this will be decayed.
@@ -186,6 +222,14 @@ var initHttpServer = () => {
         var newReceiver = req.body.receiver;
         var newValue = req.body.value;
 
+        //0804
+        //////////////// utxo find index
+        var Utxolength = UtxoSet.length;
+        var inputs = new Array();
+        if (findValidUtxo(newReceiver, newSender, newValue, inputs) == true)
+            console.log(UtxoSet);
+        //////////////////////////////
+
         var newpubKey= req.body.pubKey;
         var newin_counter= req.body.in_counter;
         var newout_counter= req.body.out_counter;
@@ -239,9 +283,7 @@ var addToMempool = (newTransaction) => {
     newTransaction.inputs,out_counter:
     newTransaction.out_counter,outputs:newTransaction.outputs});
 }
-var addToUTXO = (newTransaction) => {
-    UTXOsets.push(newTransaction.outputs);
-}
+
 var isValidTransaction = (newTransaction) => {
     // check if every data field are non-empty
     /*
@@ -381,6 +423,51 @@ var generateNextBlock = (blockData) => {
     return new Block(nextIndex, previousBlock.hash, nextTimestamp, blockData, nextHash, "0547e56d1e434eca972617295fe28c69a4e32b259009c261952130078608371ac", 34583);
 };
 */
+
+//0804
+///////////////////////////////////////////////     utxo 관련 function
+var findValidUtxo = (sender, owner, value, inputs) => {
+    var utxolen = UtxoSet.length;
+    var sum = 0;
+    var i;
+    var diff = 0; //차액
+    for (i = 0; i < utxolen; i++) {
+        if (UtxoSet[i].flag == true && UtxoSet[i].receiver == owner) {
+            console.log('first i + ' + i);
+            if (sum < value) {
+                //console.log('first i + '+i);
+                inputs.push(UtxoSet[i]);
+                sum = sum + UtxoSet[i].value;
+                UtxoSet[i].flag = false;
+                if (sum > value)
+                    break;
+            }
+        }
+    }       //i는 utxoset의 마지막 utxo의 인덱스입니다.
+    console.log('sum, value : ' + sum + value);
+    if (sum < value) {
+        return false;
+    }
+    else {
+        //diff는 차액입니다, value는 A가 B에게 보내고자 하는 금액입니다. sum은 utxo를 우선 다 합한 값입니다.
+        diff = sum - value;
+        //딱 맞게 금액 떨어지면 utxo를 분할할 필요가 없습니다.
+        if (diff == 0)
+            return true;
+
+        //A->B utxo,
+        var utxo_1 = new UTXO(sender, owner, UtxoSet[i].value - diff, utxolen + 1);
+
+        //A->A utxo
+        var utxo_2 = new UTXO(sender, sender, diff, utxolen + 2);
+
+        UtxoSet.push(utxo_1);
+        UtxoSet.push(utxo_2);
+        return true;
+    }
+}
+////////////////////////////////////////////////
+
 
 // 블록 생성 부분 // 상연아 !!
 var generateNextBlock = (blockData, m_pool) => {
